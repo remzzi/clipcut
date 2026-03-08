@@ -805,15 +805,15 @@ const BGM_LIST = [
     emoji: '⚡',
     name: '에너제틱',
     desc: '빠른 비트 · 하이라이트용',
-    src: 'https://pixabay.com/music/download/upbeat-fun-kids-112190.mp3',
+    src: null, // Web Audio 합성
     color: '#ff4d00'
   },
   {
     id: 'chill',
     emoji: '🌊',
     name: '칠아웃',
-    desc: '부드러운 · 일상 브이로그',
-    src: 'https://pixabay.com/music/download/lofi-study-112191.mp3',
+    desc: '부드러운 · 브이로그',
+    src: null,
     color: '#0055ff'
   },
   {
@@ -821,7 +821,7 @@ const BGM_LIST = [
     emoji: '🔥',
     name: '하이프',
     desc: '강렬한 · 스포츠 · 도전',
-    src: 'https://pixabay.com/music/download/powerful-beat-121791.mp3',
+    src: null,
     color: '#e60080'
   },
   {
@@ -829,7 +829,7 @@ const BGM_LIST = [
     emoji: '🎹',
     name: '로파이',
     desc: '감성적 · 카페 · 집중',
-    src: 'https://pixabay.com/music/download/chill-lofi-112192.mp3',
+    src: null,
     color: '#00875a'
   },
   {
@@ -841,6 +841,313 @@ const BGM_LIST = [
     color: '#9a9287'
   }
 ];
+
+// ============================================================
+// BGM 합성 엔진 — Web Audio API (저작권 완전 무관)
+// 브라우저 안에서 직접 생성 → MP3로 인코딩 → FFmpeg 믹싱
+// ============================================================
+async function generateBGM(type, durationSec) {
+  if (type === 'none') return null;
+
+  const sampleRate = 44100;
+  const numSamples = Math.ceil(sampleRate * durationSec);
+  const ctx = new OfflineAudioContext(2, numSamples, sampleRate);
+
+  const master = ctx.createGain();
+  master.gain.value = 0.55;
+  master.connect(ctx.destination);
+
+  if (type === 'energetic') {
+    // 120BPM 전자 드럼 + 베이스라인 + 리드
+    const bpm = 120, beat = 60 / bpm;
+    for (let b = 0; b * beat < durationSec; b++) {
+      const t = b * beat;
+      // 킥
+      if (b % 4 === 0 || b % 4 === 2) {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.frequency.setValueAtTime(180, t);
+        osc.frequency.exponentialRampToValueAtTime(0.01, t + 0.25);
+        g.gain.setValueAtTime(0.9, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + 0.25);
+      }
+      // 스네어
+      if (b % 4 === 2) {
+        const buf = ctx.createBuffer(1, sampleRate * 0.15, sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+        const src = ctx.createBufferSource();
+        const filt = ctx.createBiquadFilter();
+        const g = ctx.createGain();
+        src.buffer = buf; filt.type = 'bandpass'; filt.frequency.value = 1200;
+        g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+        src.connect(filt); filt.connect(g); g.connect(master);
+        src.start(t);
+      }
+      // 하이햇
+      {
+        const buf = ctx.createBuffer(1, sampleRate * 0.04, sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+        const src = ctx.createBufferSource();
+        const filt = ctx.createBiquadFilter();
+        const g = ctx.createGain();
+        src.buffer = buf; filt.type = 'highpass'; filt.frequency.value = 9000;
+        g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+        src.connect(filt); filt.connect(g); g.connect(master);
+        src.start(t);
+      }
+    }
+    // 베이스라인
+    const bassNotes = [55, 55, 82.4, 73.4]; // A1, A1, E2, D2
+    for (let bar = 0; bar * beat * 4 < durationSec; bar++) {
+      bassNotes.forEach((freq, i) => {
+        const t = bar * beat * 4 + i * beat;
+        if (t >= durationSec) return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sawtooth'; osc.frequency.value = freq;
+        g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.8);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + beat * 0.8);
+      });
+    }
+    // 리드 신스
+    const leadNotes = [440, 440, 523, 494, 440, 392, 440, 0];
+    for (let bar = 0; bar * beat * 8 < durationSec; bar++) {
+      leadNotes.forEach((freq, i) => {
+        if (!freq) return;
+        const t = bar * beat * 8 + i * beat;
+        if (t >= durationSec) return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'square'; osc.frequency.value = freq;
+        g.gain.setValueAtTime(0.15, t); g.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.7);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + beat * 0.7);
+      });
+    }
+
+  } else if (type === 'chill') {
+    // 80BPM 칠한 패드 + 서브베이스 + 아르페지오
+    const bpm = 80, beat = 60 / bpm;
+    // 패드 코드 (Am - F - C - G)
+    const chords = [
+      [220, 261.6, 329.6],
+      [174.6, 220, 261.6],
+      [130.8, 164.8, 196],
+      [196, 246.9, 293.7],
+    ];
+    for (let bar = 0; bar * beat * 4 < durationSec; bar++) {
+      const chord = chords[bar % chords.length];
+      chord.forEach(freq => {
+        const t = bar * beat * 4;
+        if (t >= durationSec) return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.12, t + 0.3);
+        g.gain.linearRampToValueAtTime(0.08, t + beat * 3.5);
+        g.gain.linearRampToValueAtTime(0, t + beat * 4);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + beat * 4);
+      });
+    }
+    // 서브 베이스
+    for (let bar = 0; bar * beat * 4 < durationSec; bar++) {
+      const freq = [55, 43.7, 32.7, 49][bar % 4];
+      const t = bar * beat * 4;
+      if (t >= durationSec) continue;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + beat * 4);
+      osc.connect(g); g.connect(master);
+      osc.start(t); osc.stop(t + beat * 4);
+    }
+    // 소프트 킥
+    for (let b = 0; b * beat < durationSec; b++) {
+      if (b % 4 !== 0) continue;
+      const t = b * beat;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.frequency.setValueAtTime(90, t);
+      osc.frequency.exponentialRampToValueAtTime(0.01, t + 0.35);
+      g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      osc.connect(g); g.connect(master);
+      osc.start(t); osc.stop(t + 0.35);
+    }
+
+  } else if (type === 'hype') {
+    // 140BPM 트랩 스타일
+    const bpm = 140, beat = 60 / bpm;
+    for (let b = 0; b * beat < durationSec; b++) {
+      const t = b * beat;
+      // 808 킥
+      if (b % 8 === 0 || b % 8 === 3 || b % 8 === 5) {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.frequency.setValueAtTime(200, t);
+        osc.frequency.exponentialRampToValueAtTime(40, t + 0.5);
+        g.gain.setValueAtTime(1.0, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + 0.5);
+      }
+      // 트랩 하이햇 롤
+      if (b % 2 === 1) {
+        for (let sub = 0; sub < 4; sub++) {
+          const st = t + sub * beat / 4;
+          if (st >= durationSec) break;
+          const buf = ctx.createBuffer(1, sampleRate * 0.02, sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 4);
+          const src = ctx.createBufferSource();
+          const filt = ctx.createBiquadFilter();
+          const g = ctx.createGain();
+          src.buffer = buf; filt.type = 'highpass'; filt.frequency.value = 12000;
+          g.gain.setValueAtTime(0.2 - sub * 0.03, st);
+          src.connect(filt); filt.connect(g); g.connect(master);
+          src.start(st);
+        }
+      }
+    }
+    // 브라스 신스
+    const brassNotes = [110, 130.8, 146.8, 110, 98, 110, 130.8, 0];
+    for (let bar = 0; bar * beat * 8 < durationSec; bar++) {
+      brassNotes.forEach((freq, i) => {
+        if (!freq) return;
+        const t = bar * beat * 8 + i * beat;
+        if (t >= durationSec) return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sawtooth'; osc.frequency.value = freq;
+        g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.6);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + beat * 0.6);
+      });
+    }
+
+  } else if (type === 'lofi') {
+    // 75BPM 로파이 힙합
+    const bpm = 75, beat = 60 / bpm;
+    // 피아노 코드 (Cmaj7 - Am7 - Fmaj7 - G7)
+    const chords = [
+      [261.6, 329.6, 392, 493.9],
+      [220, 261.6, 329.6, 415.3],
+      [174.6, 220, 261.6, 349.2],
+      [196, 246.9, 293.7, 392],
+    ];
+    for (let bar = 0; bar * beat * 4 < durationSec; bar++) {
+      const chord = chords[bar % 4];
+      chord.forEach((freq, ni) => {
+        const t = bar * beat * 4 + ni * 0.04;
+        if (t >= durationSec) return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle'; osc.frequency.value = freq;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.1, t + 0.06);
+        g.gain.exponentialRampToValueAtTime(0.03, t + beat * 3);
+        g.gain.linearRampToValueAtTime(0, t + beat * 4);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + beat * 4);
+      });
+    }
+    // 소프트 킥 + 스네어
+    for (let b = 0; b * beat < durationSec; b++) {
+      const t = b * beat;
+      if (b % 4 === 0) {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.frequency.setValueAtTime(100, t);
+        osc.frequency.exponentialRampToValueAtTime(0.01, t + 0.3);
+        g.gain.setValueAtTime(0.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + 0.3);
+      }
+      if (b % 4 === 2) {
+        const buf = ctx.createBuffer(1, sampleRate * 0.12, sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 1.5) * 0.5;
+        const src = ctx.createBufferSource();
+        const g = ctx.createGain();
+        src.buffer = buf;
+        g.gain.setValueAtTime(0.3, t);
+        src.connect(g); g.connect(master);
+        src.start(t);
+      }
+      // 로파이 노이즈 (빈티지 감성)
+      if (b % 1 === 0) {
+        const buf = ctx.createBuffer(1, sampleRate * 0.008, sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.03;
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(master);
+        src.start(t);
+      }
+    }
+    // 베이스
+    const bassLine = [65.4, 65.4, 55, 55, 43.7, 43.7, 49, 49];
+    for (let i = 0; i * beat < durationSec; i++) {
+      const freq = bassLine[i % bassLine.length];
+      const t = i * beat;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.85);
+      osc.connect(g); g.connect(master);
+      osc.start(t); osc.stop(t + beat * 0.85);
+    }
+  }
+
+  const rendered = await ctx.startRendering();
+
+  // Float32 → WAV 변환
+  const wav = audioBufferToWav(rendered);
+  return wav;
+}
+
+function audioBufferToWav(buffer) {
+  const numCh = buffer.numberOfChannels;
+  const length = buffer.length * numCh * 2 + 44;
+  const arrayBuffer = new ArrayBuffer(length);
+  const view = new DataView(arrayBuffer);
+  const sr = buffer.sampleRate;
+
+  const writeStr = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  const writeUint32 = (offset, val) => view.setUint32(offset, val, true);
+  const writeUint16 = (offset, val) => view.setUint16(offset, val, true);
+
+  writeStr(0, 'RIFF');
+  writeUint32(4, length - 8);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  writeUint32(16, 16);
+  writeUint16(20, 1); // PCM
+  writeUint16(22, numCh);
+  writeUint32(24, sr);
+  writeUint32(28, sr * numCh * 2);
+  writeUint16(32, numCh * 2);
+  writeUint16(34, 16);
+  writeStr(36, 'data');
+  writeUint32(40, buffer.length * numCh * 2);
+
+  let offset = 44;
+  for (let i = 0; i < buffer.length; i++) {
+    for (let ch = 0; ch < numCh; ch++) {
+      const sample = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      offset += 2;
+    }
+  }
+  return new Uint8Array(arrayBuffer);
+}
 
 // ============================================================
 // STATE
@@ -964,7 +1271,7 @@ function renderBGM() {
         <div class="bgm-name">${b.name}</div>
         <div class="bgm-desc">${b.desc}</div>
       </div>
-      ${b.src ? `<button class="play-btn" data-src="${b.src}" title="미리 듣기">▶</button>` : ''}
+      ${b.id !== 'none' ? `<button class="play-btn" data-type="${b.id}" title="미리 듣기">▶</button>` : ''}
     `;
     row.addEventListener('click', e => {
       if (e.target.classList.contains('play-btn')) return;
@@ -976,33 +1283,46 @@ function renderBGM() {
     if (playBtn) {
       playBtn.addEventListener('click', e => {
         e.stopPropagation();
-        previewBGM(b.src, playBtn);
+        previewBGM(b.id, playBtn);
       });
     }
     grid.appendChild(row);
   });
 }
 
-function previewBGM(src, btn) {
+async function previewBGM(type, btn) {
+  // 재생 중이면 정지
   if (S.previewAudio) {
-    S.previewAudio.pause();
-    document.querySelectorAll('.play-btn').forEach(b => b.classList.remove('playing'));
+    S.previewAudio.close();
     S.previewAudio = null;
-    if (btn.classList.contains('playing')) return;
+    document.querySelectorAll('.play-btn').forEach(b => { b.classList.remove('playing'); b.textContent = '▶'; });
+    if (btn.dataset.type === S.previewType) { S.previewType = null; return; }
   }
-  const audio = new Audio();
-  audio.crossOrigin = 'anonymous';
-  audio.src = src;
-  audio.volume = 0.4;
-  audio.play().catch(() => {
-    // CORS fallback — show message
-    btn.textContent = '✕';
-    setTimeout(() => { btn.textContent = '▶'; }, 2000);
-  });
-  audio.onended = () => { btn.classList.remove('playing'); S.previewAudio = null; };
-  btn.classList.add('playing');
-  btn.textContent = '■';
-  S.previewAudio = audio;
+  if (type === 'none') return;
+
+  btn.textContent = '…';
+  S.previewType = type;
+
+  try {
+    const wavData = await generateBGM(type, 8); // 8초 미리듣기
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    S.previewAudio = audioCtx;
+
+    audioCtx.decodeAudioData(wavData.buffer, decoded => {
+      const src = audioCtx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(audioCtx.destination);
+      src.start();
+      btn.classList.add('playing'); btn.textContent = '■';
+      src.onended = () => {
+        btn.classList.remove('playing'); btn.textContent = '▶';
+        S.previewAudio = null; S.previewType = null;
+      };
+      S.previewSource = src;
+    });
+  } catch(e) {
+    btn.textContent = '▶';
+  }
 }
 
 // ============================================================
@@ -1024,7 +1344,21 @@ dropZone.addEventListener('drop', e => {
   handleFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('video/')));
 });
 
+// ============================================================
+// 파일 제한 설정
+// ============================================================
+const MAX_FILES = 10;
+
 async function handleFiles(newFiles) {
+  const available = MAX_FILES - S.files.length;
+  if (available <= 0) {
+    showToast(`⚠️ 최대 ${MAX_FILES}개까지 업로드 가능해요`);
+    return;
+  }
+  if (newFiles.length > available) {
+    showToast(`⚠️ ${newFiles.length}개 중 ${available}개만 추가됐어요 (최대 ${MAX_FILES}개)`);
+    newFiles = newFiles.slice(0, available);
+  }
   for (const f of newFiles) {
     if (S.files.find(x => x.name === f.name && x.size === f.size)) continue;
     S.files.push(f);
@@ -1327,24 +1661,26 @@ async function processClips() {
     log('합치기 완료!', 'ok');
     setP(82, 'BGM 믹싱 중...');
 
-    // 4. BGM mixing
+    // 4. BGM 믹싱 (Web Audio 합성 → WAV → FFmpeg 믹싱)
     const bgmData = BGM_LIST.find(b => b.id === S.bgm);
     let finalFile = mergedName;
 
-    if (bgmData && bgmData.src) {
+    if (bgmData && bgmData.id !== 'none') {
       try {
-        log(`BGM 다운로드 중: ${bgmData.name}`);
-        const bgmResp = await fetch(bgmData.src).catch(() => null);
-        if (bgmResp && bgmResp.ok) {
-          const bgmBuf = await bgmResp.arrayBuffer();
-          await ff.writeFile('bgm.mp3', new Uint8Array(bgmBuf));
-          const totalDur = S.clips.length * S.clipDur;
+        log(`BGM 합성 중: ${bgmData.name}...`, 'warn');
+        setP(82, `BGM "${bgmData.name}" 생성 중...`);
+
+        const totalDur = S.clips.length * S.clipDur + 1;
+        const wavData = await generateBGM(bgmData.id, totalDur);
+
+        if (wavData) {
+          await ff.writeFile('bgm.wav', wavData);
           await ff.exec([
             '-i', mergedName,
             '-stream_loop', '-1',
-            '-i', 'bgm.mp3',
+            '-i', 'bgm.wav',
             '-filter_complex',
-            `[0:a]volume=1.0[va];[1:a]volume=0.35,atrim=0:${totalDur}[bgma];[va][bgma]amix=inputs=2:duration=first[aout]`,
+            `[0:a]volume=1.0[va];[1:a]volume=0.4,atrim=0:${totalDur}[bgma];[va][bgma]amix=inputs=2:duration=first[aout]`,
             '-map', '0:v',
             '-map', '[aout]',
             '-c:v', 'copy',
@@ -1355,12 +1691,11 @@ async function processClips() {
           ]);
           finalFile = 'final.mp4';
           log('BGM 믹싱 완료!', 'ok');
-        } else {
-          log('BGM 로드 실패 — BGM 없이 진행', 'warn');
+          ff.deleteFile('bgm.wav').catch(() => {});
         }
       } catch (e) {
-        log('BGM 믹싱 건너뜀 (CORS)', 'warn');
-        // Use synthetic BGM via Web Audio as fallback
+        log('BGM 생성 실패, BGM 없이 진행', 'warn');
+        console.warn(e);
         finalFile = mergedName;
       }
     }
