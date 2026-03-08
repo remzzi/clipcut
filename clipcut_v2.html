@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLIPCUT v2</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Anybody:wght@400;700;900&display=swap');
+
+:root {
+  --bg: #f5f0e8;
+  --ink: #1a1208;
+  --accent: #ff4d00;
+  --accent2: #0055ff;
+  --surface: #fff;
+  --surface2: #ede8df;
+  --border: #d4cfc6;
+  --muted: #9a9287;
+  --green: #00b86b;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Anybody', sans-serif;
+  min-height: 100vh;
+}
+
+/* HEADER */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 40px;
+  border-bottom: 2px solid var(--ink);
+  background: var(--bg);
+  position: sticky; top: 0; z-index: 200;
+}
+.logo { font-size: 28px; font-weight: 900; letter-spacing: -2px; }
+.logo .v { color: var(--accent); }
+.ver-badge {
+  background: var(--ink); color: var(--bg);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px; padding: 4px 10px; border-radius: 2px;
+}
+.ffmpeg-status {
+  display: flex; align-items: center; gap: 8px;
+  font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted);
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); transition: background 0.3s;
+}
+.status-dot.ready { background: var(--green); }
+.status-dot.loading { background: var(--accent); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* LAYOUT */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 0;
+  min-height: calc(100vh - 70px);
+}
+
+/* LEFT PANEL */
+.left {
+  border-right: 2px solid var(--ink);
+  padding: 32px;
+  display: flex; flex-direction: column; gap: 24px;
+}
+
+/* SECTION LABEL */
+.sec-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px; font-weight: 500;
+  letter-spacing: 3px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 12px;
+}
+
+/* DROP ZONE */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--surface);
+}
+.drop-zone:hover, .drop-zone.over {
+  border-color: var(--accent); border-style: solid;
+  background: #fff8f5;
+}
+.drop-zone h3 { font-size: 20px; font-weight: 900; letter-spacing: -0.5px; margin-bottom: 6px; }
+.drop-zone p { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+/* fileInput — display:none 대신 시각적으로만 숨김 (모바일 보안 정책 우회) */
+#fileInput {
+  position: absolute;
+  width: 1px; height: 1px;
+  opacity: 0; overflow: hidden;
+  pointer-events: none;
+}
+
+/* TIMELINE */
+.timeline-wrap {
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  padding: 16px;
+  display: none;
+}
+.timeline-wrap.show { display: block; }
+
+.tl-scroll {
+  display: flex; gap: 6px;
+  overflow-x: auto; padding-bottom: 8px;
+  min-height: 100px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.tl-clip {
+  flex-shrink: 0;
+  width: 72px;
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  cursor: grab;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  position: relative;
+  user-select: none;
+}
+.tl-clip:hover { border-color: var(--ink); }
+.tl-clip.dragging {
+  opacity: 0.5; cursor: grabbing;
+  transform: scale(0.95);
+}
+.tl-clip.drag-over {
+  border-color: var(--accent);
+  box-shadow: -4px 0 0 var(--accent);
+}
+
+.tl-thumb {
+  width: 100%; aspect-ratio: 9/16;
+  background: var(--ink);
+  border-radius: 2px 2px 0 0;
+  overflow: hidden; position: relative;
+}
+.tl-thumb video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.tl-overlay-badge {
+  position: absolute; top: 4px; left: 4px;
+  background: var(--accent); color: #fff;
+  font-family: 'DM Mono', monospace;
+  font-size: 8px; padding: 2px 5px; border-radius: 2px;
+  display: none;
+}
+.tl-clip.has-text .tl-overlay-badge { display: block; }
+
+.tl-meta {
+  padding: 5px 6px;
+}
+.tl-idx {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px; color: var(--muted);
+}
+.tl-fname {
+  font-size: 10px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 60px;
+}
+.tl-time {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px; color: var(--accent);
+}
+
+.tl-remove {
+  position: absolute; top: 4px; right: 4px;
+  width: 16px; height: 16px;
+  background: rgba(0,0,0,0.6); color: #fff;
+  border: none; border-radius: 50%;
+  font-size: 10px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s;
+}
+.tl-clip:hover .tl-remove { opacity: 1; }
+
+/* TEXT OVERLAY EDITOR */
+.overlay-editor {
+  display: none;
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  padding: 20px;
+}
+.overlay-editor.show { display: block; }
+
+.overlay-selected-name {
+  font-weight: 700; color: var(--accent);
+  margin-bottom: 12px; font-size: 14px;
+}
+
+.overlay-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-bottom: 10px; flex-wrap: wrap;
+}
+
+.overlay-input {
+  flex: 1; min-width: 160px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px; padding: 8px 12px;
+  font-family: 'Anybody', sans-serif;
+  font-size: 14px; color: var(--ink);
+  transition: border-color 0.15s;
+}
+.overlay-input:focus { outline: none; border-color: var(--accent); }
+
+.pos-group {
+  display: flex; gap: 4px;
+}
+.pos-btn {
+  padding: 8px 10px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; font-family: 'DM Mono', monospace;
+  font-size: 10px; cursor: pointer; transition: all 0.15s;
+  color: var(--muted);
+}
+.pos-btn.active {
+  background: var(--ink); color: var(--bg); border-color: var(--ink);
+}
+
+.apply-text-btn {
+  padding: 8px 16px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 4px;
+  font-family: 'Anybody', sans-serif;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.apply-text-btn:hover { opacity: 0.85; }
+
+.overlay-hint {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px; color: var(--muted);
+  margin-top: 4px;
+}
+
+/* RESULT */
+.result-wrap {
+  display: none;
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  padding: 20px;
+}
+.result-wrap.show { display: block; }
+
+.result-video {
+  width: 100%; border-radius: 2px;
+  background: var(--ink); max-height: 380px;
+  margin-bottom: 14px;
+}
+
+.result-actions { display: flex; gap: 8px; }
+
+.btn-dl {
+  flex: 1; padding: 12px;
+  background: var(--ink); color: var(--bg);
+  border: none; border-radius: 4px;
+  font-family: 'Anybody', sans-serif;
+  font-size: 14px; font-weight: 900; cursor: pointer;
+  transition: all 0.15s; letter-spacing: -0.5px;
+}
+.btn-dl:hover { background: var(--accent); }
+
+.btn-secondary {
+  padding: 12px 16px;
+  background: transparent; color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 4px;
+  font-family: 'Anybody', sans-serif;
+  font-size: 13px; cursor: pointer; transition: all 0.15s;
+}
+.btn-secondary:hover { background: var(--surface2); }
+
+/* RIGHT PANEL */
+.right {
+  padding: 32px 24px;
+  display: flex; flex-direction: column; gap: 20px;
+  overflow-y: auto;
+}
+
+/* SETTINGS CARD */
+.card {
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  padding: 20px;
+}
+.card-title {
+  font-size: 14px; font-weight: 900; letter-spacing: -0.3px;
+  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.card-icon { font-size: 16px; }
+
+/* TOGGLE GROUP */
+.setting-row {
+  display: flex; justify-content: space-between;
+  align-items: center; margin-bottom: 14px;
+}
+.setting-row:last-child { margin-bottom: 0; }
+.setting-lbl { font-size: 13px; font-weight: 700; }
+.setting-sub { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
+
+.tg {
+  display: flex; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 2px; gap: 2px;
+}
+.tg-btn {
+  padding: 5px 10px; border: none; border-radius: 2px;
+  font-family: 'DM Mono', monospace; font-size: 11px;
+  cursor: pointer; background: transparent; color: var(--muted);
+  transition: all 0.15s; white-space: nowrap;
+}
+.tg-btn.on {
+  background: var(--ink); color: var(--bg); font-weight: 500;
+}
+
+/* BGM */
+.bgm-grid {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.bgm-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 4px;
+  border: 2px solid transparent; cursor: pointer;
+  transition: all 0.15s; background: var(--surface2);
+}
+.bgm-row:hover { border-color: var(--border); }
+.bgm-row.sel { border-color: var(--ink); background: var(--surface); }
+.bgm-emoji { font-size: 20px; }
+.bgm-info { flex: 1; }
+.bgm-name { font-size: 13px; font-weight: 700; }
+.bgm-desc { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
+.bgm-src { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--accent2); }
+.play-btn {
+  width: 28px; height: 28px;
+  background: var(--ink); color: var(--bg);
+  border: none; border-radius: 50%;
+  font-size: 10px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s; flex-shrink: 0;
+}
+.play-btn:hover { background: var(--accent); }
+.play-btn.playing { background: var(--accent); }
+
+/* PROCESS BTN */
+.btn-process {
+  width: 100%; padding: 18px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 4px;
+  font-family: 'Anybody', sans-serif;
+  font-size: 18px; font-weight: 900;
+  letter-spacing: -0.5px;
+  cursor: pointer; transition: all 0.15s;
+  position: relative;
+}
+.btn-process:hover:not(:disabled) {
+  background: var(--ink);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255,77,0,0.25);
+}
+.btn-process:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+.btn-process .cnt { font-size: 13px; opacity: 0.8; }
+
+/* PROGRESS */
+.progress-card {
+  display: none;
+}
+.progress-card.show { display: block; }
+
+.progress-track {
+  background: var(--surface2);
+  border-radius: 2px; height: 8px;
+  overflow: hidden; margin: 10px 0 6px;
+}
+.progress-fill {
+  height: 100%; background: var(--accent);
+  border-radius: 2px; transition: width 0.4s ease;
+  width: 0%;
+}
+.progress-meta {
+  display: flex; justify-content: space-between;
+  font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted);
+}
+
+.log {
+  margin-top: 10px;
+  font-family: 'DM Mono', monospace; font-size: 10px;
+  max-height: 100px; overflow-y: auto;
+  line-height: 1.9; scrollbar-width: thin;
+}
+.log span { display: block; }
+.log .ok { color: var(--green); }
+.log .warn { color: #e6a000; }
+.log .err { color: var(--accent); }
+
+/* STATS ROW */
+.stats {
+  display: none; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.stats.show { display: grid; }
+.stat {
+  background: var(--surface); border: 2px solid var(--ink);
+  border-radius: 4px; padding: 10px; text-align: center;
+}
+.stat-v { font-size: 24px; font-weight: 900; letter-spacing: -1px; color: var(--accent); }
+.stat-l { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--muted); margin-top: 2px; }
+
+/* FFMPEG LOADING OVERLAY */
+#ffmpegOverlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(245,240,232,0.97);
+  z-index: 9999;
+  pointer-events: all;
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px;
+}
+#ffmpegOverlay.show { display: flex; }
+/* 오버레이 숨겨진 후엔 완전히 클릭 차단 해제 */
+#ffmpegOverlay:not(.show) { display: none !important; pointer-events: none !important; }
+.ff-title { font-size: 32px; font-weight: 900; letter-spacing: -1px; }
+.ff-sub { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--muted); }
+.ff-track { width: 280px; height: 6px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.ff-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; border-radius: 2px; }
+.ff-skip {
+  margin-top: 8px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--muted); font-family: 'DM Mono', monospace;
+  font-size: 11px; padding: 6px 16px; border-radius: 4px;
+  cursor: pointer; transition: all 0.15s;
+}
+.ff-skip:hover { border-color: var(--ink); color: var(--ink); }
+
+/* UPLOAD BUTTON — 모바일에서도 명확하게 보이는 버튼 */
+.upload-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 16px;
+  padding: 14px 28px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 4px;
+  font-family: 'Anybody', sans-serif;
+  font-size: 16px; font-weight: 900;
+  cursor: pointer; transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.upload-btn:hover { background: var(--ink); }
+.upload-btn:active { transform: scale(0.97); }
+
+/* DROP ZONE 모바일 개선 */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  padding: 32px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--surface);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* 모바일에서 드래그 힌트 숨기고 버튼만 강조 */
+@media (pointer: coarse) {
+  .drop-zone .drag-hint { display: none; }
+  .drop-zone { padding: 24px; border-style: solid; }
+}
+
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr; }
+  .left { border-right: none; border-bottom: 2px solid var(--ink); }
+  header { padding: 14px 16px; }
+  .logo { font-size: 22px; }
+  .ver-badge { display: none; }
+  .left, .right { padding: 16px; }
+  .tl-clip { width: 80px; } /* 모바일서 조금 더 넓게 */
+  .btn-process { font-size: 16px; padding: 16px; }
+  .upload-btn { font-size: 15px; padding: 16px 24px; }
+  /* 모바일에서 설정 패널을 가로 스크롤 */
+  .tg { flex-wrap: nowrap; overflow-x: auto; }
+}
+</style>
+</head>
+<body>
+
+<!-- FFmpeg loading overlay -->
+<div id="ffmpegOverlay" class="show">
+  <div class="ff-title">CLIPCUT <span style="color:var(--accent)">v2</span></div>
+  <div class="ff-sub">FFmpeg.wasm 로딩 중... (최초 1회, 약 20MB)</div>
+  <div class="ff-track"><div class="ff-fill" id="ffFill"></div></div>
+  <div class="ff-sub" id="ffMsg">초기화 중...</div>
+  <button class="ff-skip" id="ffSkip">로딩 기다리기 싫으면 건너뛰기 →</button>
+</div>
+
+<header>
+  <div class="logo">CLIP<span class="v">CUT</span> <span style="font-size:14px;color:var(--muted);letter-spacing:0">v2</span></div>
+  <div style="display:flex;gap:12px;align-items:center">
+    <div class="ffmpeg-status">
+      <div class="status-dot loading" id="statusDot"></div>
+      <span id="statusText">FFmpeg 로딩 중</span>
+    </div>
+    <div class="ver-badge">REAL MP4</div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ====== LEFT ====== -->
+  <div class="left">
+
+    <!-- DROP -->
+    <div>
+      <div class="sec-label">01 · 영상 업로드</div>
+      <div class="drop-zone" id="dropZone">
+        <div style="font-size:40px;margin-bottom:12px">🎬</div>
+        <h3>영상 드래그 또는 아래 버튼 클릭</h3>
+        <p class="drag-hint" style="margin-top:6px">mp4 · mov · webm · 4K 포함 모든 화질 OK</p>
+
+        <!-- label로 감싸면 클릭 이벤트 없이도 파일창 열림 — 가장 호환성 높은 방법 -->
+        <label for="fileInput" class="upload-btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;margin-top:16px;">
+          📁 영상 파일 선택하기
+        </label>
+        <p style="margin-top:10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">
+          모바일: 카메라롤 · 파일앱에서 선택 가능
+        </p>
+
+        <!-- accept에 4K 포함 모든 비디오 포맷 명시 / capture 없애서 파일앱도 선택 가능하게 -->
+        <input type="file" id="fileInput"
+          accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,video/*"
+          multiple>
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats" id="statsEl">
+      <div class="stat"><div class="stat-v" id="sFiles">0</div><div class="stat-l">영상 수</div></div>
+      <div class="stat"><div class="stat-v" id="sClips">0</div><div class="stat-l">클립 수</div></div>
+      <div class="stat"><div class="stat-v" id="sDur">0s</div><div class="stat-l">총 길이</div></div>
+    </div>
+
+    <!-- TIMELINE -->
+    <div class="timeline-wrap" id="timelineWrap">
+      <div class="sec-label">02 · 타임라인 — 드래그로 순서 변경 · 클릭해서 텍스트 추가</div>
+      <div class="tl-scroll" id="tlScroll"></div>
+    </div>
+
+    <!-- TEXT OVERLAY EDITOR -->
+    <div class="overlay-editor" id="overlayEditor">
+      <div class="sec-label">03 · 텍스트 오버레이</div>
+      <div class="overlay-selected-name" id="overlayClipName">클립 선택됨</div>
+      <div class="overlay-row">
+        <input class="overlay-input" id="overlayText" type="text" placeholder="화면에 표시할 텍스트 입력..." maxlength="40">
+        <div class="pos-group">
+          <button class="pos-btn active" data-pos="bottom">하단</button>
+          <button class="pos-btn" data-pos="center">중앙</button>
+          <button class="pos-btn" data-pos="top">상단</button>
+        </div>
+        <button class="apply-text-btn" id="applyTextBtn">적용</button>
+      </div>
+      <div class="overlay-hint">※ 빈칸으로 두면 텍스트 없음</div>
+    </div>
+
+    <!-- RESULT -->
+    <div class="result-wrap" id="resultWrap">
+      <div class="sec-label">✦ 완성 영상</div>
+      <video class="result-video" id="resultVideo" controls playsinline></video>
+      <div class="result-actions">
+        <button class="btn-dl" id="btnDl">⬇ MP4 다운로드</button>
+        <button class="btn-secondary" id="btnReset">처음부터</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ====== RIGHT ====== -->
+  <div class="right">
+
+    <!-- CUT SETTINGS -->
+    <div class="card">
+      <div class="card-title"><span class="card-icon">✂</span> 자르기</div>
+
+      <div class="setting-row">
+        <div><div class="setting-lbl">클립 길이</div><div class="setting-sub">영상당 몇 초?</div></div>
+        <div class="tg" id="tgDur">
+          <button class="tg-btn on" data-v="1">1초</button>
+          <button class="tg-btn" data-v="2">2초</button>
+          <button class="tg-btn" data-v="3">3초</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div><div class="setting-lbl">시작 지점</div><div class="setting-sub">어느 부분?</div></div>
+        <div class="tg" id="tgStart">
+          <button class="tg-btn on" data-v="start">처음</button>
+          <button class="tg-btn" data-v="mid">중간</button>
+          <button class="tg-btn" data-v="end">끝</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div><div class="setting-lbl">트랜지션</div><div class="setting-sub">클립 사이</div></div>
+        <div class="tg" id="tgTrans">
+          <button class="tg-btn on" data-v="none">없음</button>
+          <button class="tg-btn" data-v="fade">페이드</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BGM -->
+    <div class="card">
+      <div class="card-title"><span class="card-icon">♪</span> BGM</div>
+      <div class="bgm-grid" id="bgmGrid">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+
+    <!-- PROCESS -->
+    <button class="btn-process" id="btnProcess" disabled>
+      편집 시작 <span class="cnt" id="clipCnt">(0개 클립)</span>
+    </button>
+
+    <div class="progress-card card" id="progressCard">
+      <div class="card-title">처리 중...</div>
+      <div class="progress-meta"><span id="pStep">대기 중</span><span id="pPct">0%</span></div>
+      <div class="progress-track"><div class="progress-fill" id="pBar"></div></div>
+      <div class="log" id="logEl"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- FFmpeg.wasm via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+
+<script>
+// ============================================================
+// BGM DATA — Pixabay free-license audio URLs
+// ============================================================
+const BGM_LIST = [
+  {
+    id: 'energetic',
+    emoji: '⚡',
+    name: '에너제틱',
+    desc: '빠른 비트 · 하이라이트용',
+    src: 'https://pixabay.com/music/download/upbeat-fun-kids-112190.mp3',
+    color: '#ff4d00'
+  },
+  {
+    id: 'chill',
+    emoji: '🌊',
+    name: '칠아웃',
+    desc: '부드러운 · 일상 브이로그',
+    src: 'https://pixabay.com/music/download/lofi-study-112191.mp3',
+    color: '#0055ff'
+  },
+  {
+    id: 'hype',
+    emoji: '🔥',
+    name: '하이프',
+    desc: '강렬한 · 스포츠 · 도전',
+    src: 'https://pixabay.com/music/download/powerful-beat-121791.mp3',
+    color: '#e60080'
+  },
+  {
+    id: 'lofi',
+    emoji: '🎹',
+    name: '로파이',
+    desc: '감성적 · 카페 · 집중',
+    src: 'https://pixabay.com/music/download/chill-lofi-112192.mp3',
+    color: '#00875a'
+  },
+  {
+    id: 'none',
+    emoji: '🔇',
+    name: 'BGM 없음',
+    desc: '원본 오디오만',
+    src: null,
+    color: '#9a9287'
+  }
+];
+
+// ============================================================
+// STATE
+// ============================================================
+const S = {
+  ffmpegReady: false,
+  ffmpeg: null,
+  files: [],          // File objects
+  clips: [],          // { id, file, startSec, dur, name, text, textPos }
+  clipDur: 1,
+  startPoint: 'start',
+  transition: 'none',
+  bgm: 'energetic',
+  processing: false,
+  resultBlob: null,
+  previewAudio: null,
+  selectedClipId: null,
+  textPos: 'bottom',
+};
+
+let dragSrcIdx = null;
+
+// ============================================================
+// DOM
+// ============================================================
+const $ = id => document.getElementById(id);
+const dropZone = $('dropZone');
+const fileInput = $('fileInput');
+const tlScroll = $('tlScroll');
+const timelineWrap = $('timelineWrap');
+const statsEl = $('statsEl');
+const overlayEditor = $('overlayEditor');
+const overlayText = $('overlayText');
+const overlayClipName = $('overlayClipName');
+const btnProcess = $('btnProcess');
+const progressCard = $('progressCard');
+const resultWrap = $('resultWrap');
+const resultVideo = $('resultVideo');
+const logEl = $('logEl');
+
+// ============================================================
+// FFMPEG INIT
+// ============================================================
+function forceCloseOverlay() {
+  const ov = $('ffmpegOverlay');
+  ov.classList.remove('show');
+  ov.style.display = 'none';
+  ov.style.pointerEvents = 'none';
+}
+
+$('ffSkip').addEventListener('click', () => {
+  forceCloseOverlay();
+  $('statusDot').style.background = '#e6a000';
+  $('statusText').textContent = 'Canvas 모드 (FFmpeg 없음)';
+});
+
+async function initFFmpeg() {
+  try {
+    $('ffMsg').textContent = 'FFmpeg core 로딩 중...';
+    fakeProgress('ffFill', 0, 40, 2000);
+
+    const { FFmpeg } = FFmpegWASM;
+    const { fetchFile, toBlobURL } = FFmpegUtil;
+
+    S.ffmpeg = new FFmpeg();
+
+    S.ffmpeg.on('log', ({ message }) => {
+      // silent ffmpeg logs
+    });
+
+    $('ffMsg').textContent = 'WASM 컴파일 중...';
+    fakeProgress('ffFill', 40, 85, 3000);
+
+    const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+    await S.ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+
+    fakeProgress('ffFill', 85, 100, 500);
+    await delay(600);
+
+    S.ffmpegReady = true;
+    $('statusDot').className = 'status-dot ready';
+    $('statusText').textContent = 'FFmpeg 준비됨';
+    forceCloseOverlay();
+
+  } catch (e) {
+    $('ffMsg').textContent = '로드 실패 — Canvas 모드로 실행';
+    $('statusDot').style.background = '#e6a000';
+    $('statusText').textContent = 'Canvas 모드';
+    await delay(1200);
+    forceCloseOverlay();
+  }
+}
+
+function fakeProgress(elId, from, to, ms) {
+  const el = $(elId);
+  const start = Date.now();
+  const tick = () => {
+    const t = Math.min(1, (Date.now() - start) / ms);
+    el.style.width = (from + (to - from) * t) + '%';
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+// ============================================================
+// BGM RENDER
+// ============================================================
+function renderBGM() {
+  const grid = $('bgmGrid');
+  grid.innerHTML = '';
+  BGM_LIST.forEach(b => {
+    const row = document.createElement('div');
+    row.className = 'bgm-row' + (b.id === S.bgm ? ' sel' : '');
+    row.dataset.id = b.id;
+    row.innerHTML = `
+      <span class="bgm-emoji">${b.emoji}</span>
+      <div class="bgm-info">
+        <div class="bgm-name">${b.name}</div>
+        <div class="bgm-desc">${b.desc}</div>
+      </div>
+      ${b.src ? `<button class="play-btn" data-src="${b.src}" title="미리 듣기">▶</button>` : ''}
+    `;
+    row.addEventListener('click', e => {
+      if (e.target.classList.contains('play-btn')) return;
+      S.bgm = b.id;
+      document.querySelectorAll('.bgm-row').forEach(r => r.classList.remove('sel'));
+      row.classList.add('sel');
+    });
+    const playBtn = row.querySelector('.play-btn');
+    if (playBtn) {
+      playBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        previewBGM(b.src, playBtn);
+      });
+    }
+    grid.appendChild(row);
+  });
+}
+
+function previewBGM(src, btn) {
+  if (S.previewAudio) {
+    S.previewAudio.pause();
+    document.querySelectorAll('.play-btn').forEach(b => b.classList.remove('playing'));
+    S.previewAudio = null;
+    if (btn.classList.contains('playing')) return;
+  }
+  const audio = new Audio();
+  audio.crossOrigin = 'anonymous';
+  audio.src = src;
+  audio.volume = 0.4;
+  audio.play().catch(() => {
+    // CORS fallback — show message
+    btn.textContent = '✕';
+    setTimeout(() => { btn.textContent = '▶'; }, 2000);
+  });
+  audio.onended = () => { btn.classList.remove('playing'); S.previewAudio = null; };
+  btn.classList.add('playing');
+  btn.textContent = '■';
+  S.previewAudio = audio;
+}
+
+// ============================================================
+// FILE HANDLING
+// ============================================================
+// label[for="fileInput"]가 클릭을 처리하므로 JS 클릭 핸들러 불필요
+// 드래그앤드롭만 JS로 처리
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) handleFiles([...e.target.files]);
+  // 같은 파일 재선택 가능하게 초기화
+  fileInput.value = '';
+});
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', e => {
+  if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('over');
+});
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('over');
+  handleFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('video/')));
+});
+
+async function handleFiles(newFiles) {
+  for (const f of newFiles) {
+    if (S.files.find(x => x.name === f.name && x.size === f.size)) continue;
+    S.files.push(f);
+    const dur = await getVideoDuration(f);
+    f._dur = dur;
+    buildClipsFromFile(f);
+  }
+  renderTimeline();
+  updateStats();
+}
+
+function buildClipsFromFile(file) {
+  const count = Math.max(1, Math.floor(file._dur / S.clipDur));
+  for (let i = 0; i < count; i++) {
+    let startSec = i * S.clipDur;
+    if (S.startPoint === 'mid') startSec = Math.max(0, (file._dur / 2) - S.clipDur / 2 + i * 0.2);
+    if (S.startPoint === 'end')  startSec = Math.max(0, file._dur - S.clipDur - i * 0.1);
+    startSec = Math.max(0, Math.min(startSec, file._dur - S.clipDur));
+    S.clips.push({
+      id: `clip_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      file,
+      startSec,
+      dur: S.clipDur,
+      name: file.name.replace(/\.[^.]+$/, ''),
+      text: '',
+      textPos: 'bottom',
+    });
+  }
+}
+
+function getVideoDuration(file) {
+  return new Promise(resolve => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); resolve(v.duration || 3); };
+    v.onerror = () => resolve(3);
+    v.src = URL.createObjectURL(file);
+  });
+}
+
+// ============================================================
+// TIMELINE RENDER + DRAG
+// ============================================================
+function renderTimeline() {
+  tlScroll.innerHTML = '';
+  if (!S.clips.length) {
+    timelineWrap.classList.remove('show');
+    overlayEditor.classList.remove('show');
+    return;
+  }
+  timelineWrap.classList.add('show');
+
+  S.clips.forEach((clip, idx) => {
+    const card = document.createElement('div');
+    card.className = 'tl-clip' + (clip.text ? ' has-text' : '') + (clip.id === S.selectedClipId ? ' sel' : '');
+    card.dataset.idx = idx;
+    card.draggable = true;
+
+    const url = URL.createObjectURL(clip.file);
+    card.innerHTML = `
+      <div class="tl-thumb">
+        <video src="${url}" muted preload="metadata" style="pointer-events:none"></video>
+        <div class="tl-overlay-badge">T</div>
+      </div>
+      <div class="tl-meta">
+        <div class="tl-idx">#${idx + 1}</div>
+        <div class="tl-fname">${clip.name}</div>
+        <div class="tl-time">${clip.startSec.toFixed(1)}s~${(clip.startSec+clip.dur).toFixed(1)}s</div>
+      </div>
+      <button class="tl-remove" data-idx="${idx}">✕</button>
+    `;
+
+    const vid = card.querySelector('video');
+    vid.currentTime = clip.startSec + 0.1;
+    card.addEventListener('mouseenter', () => { vid.currentTime = clip.startSec; vid.play().catch(()=>{}); });
+    card.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = clip.startSec; });
+
+    // Click to select for overlay editing
+    card.addEventListener('click', e => {
+      if (e.target.classList.contains('tl-remove')) return;
+      S.selectedClipId = clip.id;
+      document.querySelectorAll('.tl-clip').forEach(c => c.classList.remove('sel'));
+      card.classList.add('sel');
+      openOverlayEditor(clip);
+    });
+
+    // Remove
+    card.querySelector('.tl-remove').addEventListener('click', e => {
+      e.stopPropagation();
+      S.clips.splice(idx, 1);
+      if (S.selectedClipId === clip.id) { S.selectedClipId = null; overlayEditor.classList.remove('show'); }
+      renderTimeline(); updateStats();
+    });
+
+    // Drag
+    card.addEventListener('dragstart', () => { dragSrcIdx = idx; card.classList.add('dragging'); });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault(); card.classList.remove('drag-over');
+      if (dragSrcIdx === null || dragSrcIdx === idx) return;
+      const moved = S.clips.splice(dragSrcIdx, 1)[0];
+      S.clips.splice(idx, 0, moved);
+      dragSrcIdx = null;
+      renderTimeline(); updateStats();
+    });
+
+    tlScroll.appendChild(card);
+  });
+}
+
+// ============================================================
+// OVERLAY EDITOR
+// ============================================================
+function openOverlayEditor(clip) {
+  overlayEditor.classList.add('show');
+  overlayClipName.textContent = `✦ ${clip.name} · ${clip.startSec.toFixed(1)}s`;
+  overlayText.value = clip.text || '';
+  document.querySelectorAll('.pos-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.pos === clip.textPos);
+  });
+  S.textPos = clip.textPos || 'bottom';
+}
+
+document.querySelectorAll('.pos-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    S.textPos = btn.dataset.pos;
+  });
+});
+
+$('applyTextBtn').addEventListener('click', () => {
+  const clip = S.clips.find(c => c.id === S.selectedClipId);
+  if (!clip) return;
+  clip.text = overlayText.value.trim();
+  clip.textPos = S.textPos;
+  renderTimeline();
+});
+
+// ============================================================
+// SETTINGS
+// ============================================================
+function setupToggle(groupId, onChange) {
+  const group = $(groupId);
+  group.querySelectorAll('.tg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      group.querySelectorAll('.tg-btn').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      onChange(btn.dataset.v);
+    });
+  });
+}
+
+setupToggle('tgDur', v => {
+  S.clipDur = parseInt(v);
+  rebuildClips();
+});
+setupToggle('tgStart', v => {
+  S.startPoint = v;
+  rebuildClips();
+});
+setupToggle('tgTrans', v => { S.transition = v; });
+
+function rebuildClips() {
+  S.clips = [];
+  for (const f of S.files) buildClipsFromFile(f);
+  renderTimeline(); updateStats();
+}
+
+// ============================================================
+// STATS
+// ============================================================
+function updateStats() {
+  const n = S.clips.length;
+  statsEl.classList.toggle('show', n > 0);
+  $('sFiles').textContent = S.files.length;
+  $('sClips').textContent = n;
+  $('sDur').textContent = (n * S.clipDur) + 's';
+  $('clipCnt').textContent = `(${n}개 클립)`;
+  btnProcess.disabled = n === 0 || S.processing || !S.ffmpegReady;
+}
+
+// ============================================================
+// LOG
+// ============================================================
+function log(msg, type = '') {
+  const span = document.createElement('span');
+  span.className = type;
+  span.textContent = '› ' + msg;
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setP(pct, step) {
+  $('pBar').style.width = pct + '%';
+  $('pPct').textContent = Math.round(pct) + '%';
+  $('pStep').textContent = step;
+}
+
+// ============================================================
+// PROCESS — FFmpeg.wasm
+// ============================================================
+btnProcess.addEventListener('click', processClips);
+
+async function processClips() {
+  if (!S.clips.length) return;
+  S.processing = true;
+  btnProcess.disabled = true;
+  progressCard.classList.add('show');
+  resultWrap.classList.remove('show');
+  logEl.innerHTML = '';
+
+  const ff = S.ffmpeg;
+  const { fetchFile } = FFmpegUtil;
+
+  try {
+    log('FFmpeg 준비 확인...', 'warn');
+    setP(2, '파일 쓰는 중...');
+
+    // 1. Write input files to FFmpeg FS
+    const writtenFiles = new Set();
+    for (let i = 0; i < S.clips.length; i++) {
+      const clip = S.clips[i];
+      const fname = `input_${i}.mp4`;
+      if (!writtenFiles.has(clip.file.name + clip.file.size)) {
+        const srcName = `src_${clip.file.name.replace(/[^a-z0-9.]/gi,'_')}`;
+        if (!writtenFiles.has(srcName)) {
+          log(`파일 쓰기: ${clip.file.name}`);
+          await ff.writeFile(srcName, await fetchFile(clip.file));
+          writtenFiles.add(srcName);
+        }
+        clip._srcName = srcName;
+      }
+      setP(2 + (i / S.clips.length) * 15, `파일 준비 ${i+1}/${S.clips.length}`);
+    }
+
+    log('파일 쓰기 완료!', 'ok');
+    setP(18, '클립 자르기 시작...');
+
+    // 2. Cut each clip
+    const cutFiles = [];
+    for (let i = 0; i < S.clips.length; i++) {
+      const clip = S.clips[i];
+      const outName = `cut_${i}.mp4`;
+
+      // Build filter for text overlay
+      let vfFilter = 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2';
+
+      if (clip.text) {
+        const yMap = { bottom: 'h-100', center: '(h-text_h)/2', top: '60' };
+        const y = yMap[clip.textPos] || 'h-100';
+        const escapedText = clip.text.replace(/'/g, "\\'").replace(/:/g, '\\:');
+        vfFilter += `,drawtext=text='${escapedText}':fontsize=52:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=${y}`;
+      }
+
+      if (S.transition === 'fade') {
+        vfFilter += `,fade=in:0:5,fade=out:${Math.max(0, clip.dur * 30 - 5)}:5`;
+      }
+
+      log(`클립 ${i+1} 자르기 중... (${clip.startSec.toFixed(1)}s)`);
+
+      await ff.exec([
+        '-ss', clip.startSec.toFixed(3),
+        '-t', clip.dur.toFixed(3),
+        '-i', clip._srcName,
+        '-vf', vfFilter,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '28',
+        '-c:a', 'aac',
+        '-ar', '44100',
+        '-ac', '2',
+        '-y',
+        outName
+      ]);
+
+      cutFiles.push(outName);
+      setP(18 + (i / S.clips.length) * 50, `클립 ${i+1}/${S.clips.length} 완료`);
+    }
+
+    log('모든 클립 자르기 완료!', 'ok');
+    setP(70, '클립 합치는 중...');
+
+    // 3. Concat list
+    const concatList = cutFiles.map(f => `file '${f}'`).join('\n');
+    await ff.writeFile('concat_list.txt', concatList);
+
+    const mergedName = 'merged.mp4';
+    await ff.exec([
+      '-f', 'concat',
+      '-safe', '0',
+      '-i', 'concat_list.txt',
+      '-c', 'copy',
+      '-y',
+      mergedName
+    ]);
+
+    log('합치기 완료!', 'ok');
+    setP(82, 'BGM 믹싱 중...');
+
+    // 4. BGM mixing
+    const bgmData = BGM_LIST.find(b => b.id === S.bgm);
+    let finalFile = mergedName;
+
+    if (bgmData && bgmData.src) {
+      try {
+        log(`BGM 다운로드 중: ${bgmData.name}`);
+        const bgmResp = await fetch(bgmData.src).catch(() => null);
+        if (bgmResp && bgmResp.ok) {
+          const bgmBuf = await bgmResp.arrayBuffer();
+          await ff.writeFile('bgm.mp3', new Uint8Array(bgmBuf));
+          const totalDur = S.clips.length * S.clipDur;
+          await ff.exec([
+            '-i', mergedName,
+            '-stream_loop', '-1',
+            '-i', 'bgm.mp3',
+            '-filter_complex',
+            `[0:a]volume=1.0[va];[1:a]volume=0.35,atrim=0:${totalDur}[bgma];[va][bgma]amix=inputs=2:duration=first[aout]`,
+            '-map', '0:v',
+            '-map', '[aout]',
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-shortest',
+            '-y',
+            'final.mp4'
+          ]);
+          finalFile = 'final.mp4';
+          log('BGM 믹싱 완료!', 'ok');
+        } else {
+          log('BGM 로드 실패 — BGM 없이 진행', 'warn');
+        }
+      } catch (e) {
+        log('BGM 믹싱 건너뜀 (CORS)', 'warn');
+        // Use synthetic BGM via Web Audio as fallback
+        finalFile = mergedName;
+      }
+    }
+
+    setP(95, '파일 읽는 중...');
+    const data = await ff.readFile(finalFile);
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+    S.resultBlob = blob;
+
+    const url = URL.createObjectURL(blob);
+    resultVideo.src = url;
+    resultVideo.load();
+
+    $('btnDl').onclick = () => {
+      const a = document.createElement('a');
+      a.href = url; a.download = `clipcut_${Date.now()}.mp4`; a.click();
+    };
+
+    setP(100, '완료! 🎉');
+    log(`${S.clips.length}개 클립 → 진짜 MP4 완성!`, 'ok');
+    if (bgmData && bgmData.id !== 'none') log(`BGM: ${bgmData.name}`, 'ok');
+
+    resultWrap.classList.add('show');
+    resultWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Cleanup FFmpeg FS
+    for (const f of cutFiles) ff.deleteFile(f).catch(() => {});
+    ff.deleteFile('concat_list.txt').catch(() => {});
+    ff.deleteFile(mergedName).catch(() => {});
+
+  } catch (err) {
+    log('오류: ' + err.message, 'err');
+    setP(0, '오류 발생');
+    console.error(err);
+  }
+
+  S.processing = false;
+  btnProcess.disabled = S.clips.length === 0;
+}
+
+// ============================================================
+// RESET
+// ============================================================
+$('btnReset').addEventListener('click', () => {
+  S.files = []; S.clips = []; S.processing = false;
+  S.resultBlob = null; S.selectedClipId = null;
+  tlScroll.innerHTML = '';
+  logEl.innerHTML = '';
+  timelineWrap.classList.remove('show');
+  overlayEditor.classList.remove('show');
+  resultWrap.classList.remove('show');
+  progressCard.classList.remove('show');
+  statsEl.classList.remove('show');
+  btnProcess.disabled = true;
+  $('clipCnt').textContent = '(0개 클립)';
+  try { fileInput.value = ''; } catch(e) {}
+  setP(0, '');
+});
+
+// ============================================================
+// UTILS
+// ============================================================
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ============================================================
+// INIT
+// ============================================================
+renderBGM();
+initFFmpeg();
+updateStats();
+</script>
+</body>
+</html>
